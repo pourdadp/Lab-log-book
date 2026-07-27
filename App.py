@@ -1,4 +1,3 @@
-
 from datetime import datetime
 import sqlite3
 import jdatetime
@@ -129,7 +128,7 @@ if not st.session_state["user"]:
         st.error("نام کاربری یا رمز عبور اشتباه است.")
   st.stop()
 
-# --- نوار کناری (Sidebar) شکیل‌تر ---
+# --- نوار کناری (Sidebar) ---
 st.sidebar.markdown(f"### 👤 کاربر: {st.session_state['user']}")
 st.sidebar.markdown(f"📌 **نقش:** `{st.session_state['role']}`")
 st.sidebar.markdown("---")
@@ -426,38 +425,48 @@ elif menu == "📍 مدیریت محل‌های استقرار (ادمین)":
         except:
           st.error("این محل استقرار از قبل وجود دارد.")
 
-    st.markdown("### لیست و ویرایش محل‌های موجود")
+    st.markdown("### لیست و مدیریت محل‌های موجود")
     if locs_df.empty:
       st.info("محیطی ثبت نشده است.")
     else:
       for idx, row in locs_df.iterrows():
-        col1, col2, col3 = st.columns([3, 1, 1])
-        updated_loc_name = col1.text_input(
-            "ویرایش نام", value=row["name"], key=f"loc_val_{row['id']}"
-        )
-        if col2.button("بروزرسانی", key=f"up_loc_{row['id']}"):
-          conn = sqlite3.connect(DB_NAME)
-          cursor = conn.cursor()
-          cursor.execute(
-              "UPDATE locations SET name = ? WHERE id = ?",
-              (updated_loc_name, row["id"]),
+        with st.form(f"loc_form_{row['id']}"):
+          col1, col2, col3 = st.columns([3, 1, 1])
+          updated_loc_name = col1.text_input(
+              "ویرایش نام", value=row["name"], label_visibility="collapsed"
           )
-          conn.commit()
-          conn.close()
-          log_audit(
-              st.session_state["user"],
-              f"ویرایش محل استقرار به {updated_loc_name}",
-          )
-          st.success("بروز شد.")
-          st.rerun()
-        if col3.button("حذف", key=f"del_loc_{row['id']}"):
-          conn = sqlite3.connect(DB_NAME)
-          cursor = conn.cursor()
-          cursor.execute("DELETE FROM locations WHERE id = ?", (row["id"],))
-          conn.commit()
-          conn.close()
-          log_audit(st.session_state["user"], f"حذف محل استقرار id:{row['id']}")
-          st.rerun()
+          up_btn = col2.form_submit_button("بروزرسانی")
+          del_btn = col3.form_submit_button("حذف")
+
+          if up_btn:
+            try:
+              conn = sqlite3.connect(DB_NAME)
+              cursor = conn.cursor()
+              cursor.execute(
+                  "UPDATE locations SET name = ? WHERE id = ?",
+                  (updated_loc_name, row["id"]),
+              )
+              conn.commit()
+              conn.close()
+              log_audit(
+                  st.session_state["user"],
+                  f"ویرایش محل استقرار به {updated_loc_name}",
+              )
+              st.success("بروز شد.")
+              st.rerun()
+            except:
+              st.error("خطا در نام‌گذاری یا تکراری بودن.")
+
+          if del_btn:
+            conn = sqlite3.connect(DB_NAME)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM locations WHERE id = ?", (row["id"],))
+            conn.commit()
+            conn.close()
+            log_audit(
+                st.session_state["user"], f"حذف محل استقرار id:{row['id']}"
+            )
+            st.rerun()
 
 # --- بخش ۵: مدیریت کارشناسان (ادمین) ---
 elif menu == "👨‍🔬 مدیریت کارشناسان (ادمین)":
@@ -485,37 +494,46 @@ elif menu == "👨‍🔬 مدیریت کارشناسان (ادمین)":
         except:
           st.error("این کارشناس از قبل وجود دارد.")
 
-    st.markdown("### لیست و ویرایش کارشناسان موجود")
+    st.markdown("### لیست و مدیریت کارشناسان موجود")
     if experts_df.empty:
       st.info("کارشناسی ثبت نشده است.")
     else:
       for idx, row in experts_df.iterrows():
-        col1, col2, col3 = st.columns([3, 1, 1])
-        updated_exp_name = col1.text_input(
-            "ویرایش نام", value=row["name"], key=f"exp_val_{row['id']}"
-        )
-        if col2.button("بروزرسانی", key=f"up_exp_{row['id']}"):
-          conn = sqlite3.connect(DB_NAME)
-          cursor = conn.cursor()
-          cursor.execute(
-              "UPDATE experts SET name = ? WHERE id = ?",
-              (updated_exp_name, row["id"]),
+        with st.form(f"exp_form_{row['id']}"):
+          col1, col2, col3 = st.columns([3, 1, 1])
+          updated_exp_name = col1.text_input(
+              "ویرایش نام", value=row["name"], label_visibility="collapsed"
           )
-          conn.commit()
-          conn.close()
-          log_audit(
-              st.session_state["user"], f"ویرایش کارشناس به {updated_exp_name}"
-          )
-          st.success("بروز شد.")
-          st.rerun()
-        if col3.button("حذف", key=f"del_exp_{row['id']}"):
-          conn = sqlite3.connect(DB_NAME)
-          cursor = conn.cursor()
-          cursor.execute("DELETE FROM experts WHERE id = ?", (row["id"],))
-          conn.commit()
-          conn.close()
-          log_audit(st.session_state["user"], f"حذف کارشناس id:{row['id']}")
-          st.rerun()
+          up_exp_btn = col2.form_submit_button("بروزرسانی")
+          del_exp_btn = col3.form_submit_button("حذف")
+
+          if up_exp_btn:
+            try:
+              conn = sqlite3.connect(DB_NAME)
+              cursor = conn.cursor()
+              cursor.execute(
+                  "UPDATE experts SET name = ? WHERE id = ?",
+                  (updated_exp_name, row["id"]),
+              )
+              conn.commit()
+              conn.close()
+              log_audit(
+                  st.session_state["user"],
+                  f"ویرایش کارشناس به {updated_exp_name}",
+              )
+              st.success("بروز شد.")
+              st.rerun()
+            except:
+              st.error("خطا در بروزرسانی نام کارشناس.")
+
+          if del_exp_btn:
+            conn = sqlite3.connect(DB_NAME)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM experts WHERE id = ?", (row["id"],))
+            conn.commit()
+            conn.close()
+            log_audit(st.session_state["user"], f"حذف کارشناس id:{row['id']}")
+            st.rerun()
 
 # --- بخش ۶: مدیریت کاربران (ادمین) ---
 elif menu == "👥 مدیریت کاربران (ادمین)":
@@ -646,5 +664,3 @@ elif menu == "📊 گزارشات و قابلیت پرینت":
             file_name="lab_report.html",
             mime="text/html",
         )
-
-```
