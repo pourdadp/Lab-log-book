@@ -1,23 +1,45 @@
-# QuickLab: Das Ultimative Labor-Logbuch-System 🧪🚀
-Willkommen bei **QuickLab**, der revolutionären und hochmodernen Anwendung zur professionellen Verwaltung, Überwachung und Protokollierung Ihres Labors! Dieses Tool wurde entwickelt, um den Standard Ihrer Laborprozesse drastisch zu erhöhen, maximale Sicherheit zu gewährleisten und Ihren Arbeitsalltag unglaublich zu erleichtern.
-## 🔥 Warum Sie QuickLab unbedingt nutzen müssen!
-QuickLab ist nicht einfach nur ein Logbuch – es ist ein kompletter, intelligenter und sicherer Assistent für Ihr gesamtes Labor-Management. Hier sind die herausragenden Eigenschaften, die diese Software absolut unersetzlich machen:
- * **Absolut Höchste Sicherheit (Enterprise-Grade Security):** Vergessen unsichere Passwörter! QuickLab schützt alle Benutzerkonten dank modernster und branchenüblicher **bcrypt-Passwortverschlüsselung** vor jeglichem unbefugten Zugriff.
- * **Perfekte Modulare Architektur:** Die Anwendung wurde von Grund auf nach modernsten Software-Design-Prinzipien entwickelt. Dank klarer Trennung (app.py, database.py, auth.py, config.py) ist der Code extrem stabil, wartungsfreundlich und zukunftssicher.
- * **Zentralisiertes & Robustes Datenbank-Management:** Dank intelligenter Fehlerbehandlung (try-except) und zentralisierten Verbindungen gehören unerwartete Abstürze der Vergangenheit an. Ihre Daten sind absolut sicher!
- * **Lückenlose Audit-Protokollierung (Audit Logs):** Jede wichtige Aktivität im Labor – ob Benutzer-Login, Geräteeinstellung oder Berichterstellung – wird sekundengenau aufgezeichnet. Volle Transparenz und Kontrolle garantiert!
- * **Nahtlose Unterstützung des persönlichen Kalenders:** Durch die integrierte Nutzung von jdatetime verwalten und protokollieren Sie alle Ereignisse und Kalibrierungsdaten mühelos im persönlichen/solar-hijri Kalenderformat.
- * **Erweiterte Berichte & Direkte Druckfunktion:** Erstellen Sie mit wenigen Klicks professionelle Berichte, filtern Sie nach Geräten oder Warnungen, und nutzen Sie die automatische HTML-Druckfunktion inklusive offizieller Unterschriftsfelder für das Labor-Management!
- * **Hervorragende Performance:** Durch den intelligenten Einsatz von Streamlit-Caching (st.cache_data) lädt die Benutzeroberقال blitzschnell, selbst bei großen Datenmengen.
- * **Intuitive Benutzerfreundlichkeit (UX):** Schutz vor Fehlbedienung durch integrierte Sicherheitsabfragen (wie Bestätigungs-Checkboxes vor dem Löschen von Geräten) und ein klares, modernes Design.
-## 🚀 Schnelleinrichtung (In wenigen Minuten startklar!)
- 1. Erstellen Sie einen neuen Ordner auf Ihrem System (z. B. lab_logbook).
- 2. Fügen Sie die vier Kern-Dateien ein: config.py, database.py, auth.py und app.py.
- 3. Installieren Sie die benötigten Python-Bibliotheken (Streamlit, Pandas, Bcrypt, jdatetime).
- 4. Starten Sie das System ganz einfach über Ihr Terminal:
+# QuickLab: Labor-Logbuch- und Managementsystem 🧪
+Das System **QuickLab** ist eine standardisierte, sichere und modulare Lösung zur Protokollierung von Ereignissen, zur Überwachung des Gerätestatus und zur Zugriffsverwaltung in Laboratorien. Dieses Projekt wurde entwickelt, um Datenerfassungsfehler zu reduzieren, die Systemstabilität zu erhöhen und die Informationssicherheit zu gewährleisten.
+## 🖼️ Vorschau der Benutzeroberfläche (UI Preview)
+```text
++-------------------------------------------------------------------+
+| 🧪 QuickLab - Labor-Logbuch-System           [👤 Benutzer: admin]   |
++-------------------------------------------------------------------+
+| Hauptmenü:                | Geräteübersicht und Status:           |
+| 📝 Neuer Bericht           | +--------------+----------+----------+ |
+| 🖥️ Geräte anzeigen        | | Gerätename   | Temp (°C)| Status   | |
+| ⚙️ Geräte verwalten (Admin)| +--------------+----------+----------+ |
+| 📊 Berichte & Druck       | | Spektralphotometer| 25.0| Gut      | |
++---------------------------+ | Inkubator      | 37.0     | Abweichung|
+                            +--------------+----------+----------+ |
+
+```
+## ✨ Hauptmerkmale des Systems
+ * **Datensicherheit:** Verwendung des Standard-Algorithmus bcrypt zum Hashing und Schutz von Benutzerpasswörtern.
+ * **Modulare Architektur:** Trennung der Projektstruktur in separate Komponenten (database.py, auth.py, config.py, app.py) für eine einfachere Wartung und Weiterentwicklung.
+ * **Aktivitätsprotokollierung (Audit Trail):** Genaue Aufzeichnung aller wichtigen Benutzeraktivitäten wie Anweisungen, An- und Abmeldungen sowie Datenbearbeitungen in einer Audit-Tabelle.
+ * **Unterstützung des Solar-Hijri-Kalenders:** Volle Unterstützung für persische/solar-hijri Daten und Zeiten über die Bibliothek jdatetime.
+ * **Erweiterte Berichterstattung und Druck:** Möglichkeit, nützliche Filter auf Berichte anzuwenden und eine standardmäßige HTML-Ausgabe mit automatischer Druckfunktion und Signaturbereich zu generieren.
+ * **Datenbankstabilität:** Zentralisierte Verbindungsverwaltung und Fehlerbehandlung mit try-except-Blöcken zur Vermeidung unerwarteter Programmabstürze.
+## 👥 Zielgruppen des Systems
+### 🎯 Für Laborleiter
+ * Vollständige Überwachung der Geräteleistung und der Kalibrierungsdaten.
+ * Zugriff auf gefilterte Berichte und offizielle Ausgaben für Audits.
+ * Vermeidung menschlicher Fehler durch integrierte Löschbestätigungen.
+### 💻 Für Entwickler und Technik-Teams
+ * Sauberer, strukturierter Code basierend auf Python und Streamlit.
+ * Schnelle Erweiterbarkeit dank der Trennung von Logik- und Datenschichten.
+ * Keine komplexe Hardware-Abhängigkeit und einfache Einrichtung mit einer leichten SQLite-Datenbank.
+## 🚀 Schnellstartanleitung
+ 1. Erstellen Sie einen neuen Ordner namens lab_logbook.
+ 2. Platzieren Sie die Projektdateien (config.py, database.py, auth.py, app.py) darin.
+ 3. Installieren Sie die erforderlichen Abhängigkeiten:
+   ```bash
+   pip install streamlit pandas bcrypt jdatetime
+   
+   ```
+ 4. Starten Sie das Programm über das Terminal:
    ```bash
    streamlit run app.py
    
    ```
-### 💡 Fazit
-**QuickLab** ist die ultimative Lösung für jedes moderne Labor, das Wert auf höchste Sicherheit, Präzision und Effizienz legt. Verschwenden Sie keine Zeit mehr mit veralteten Methoden – steigen Sie jetzt auf QuickLab um und erleben Sie die Zukunft des Labor-Managements! 🌟
