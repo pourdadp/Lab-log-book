@@ -1,617 +1,287 @@
-# app.py
-from datetime import datetime
-import jdatetime
-import pandas as pd
 import streamlit as st
-from auth import create_user, verify_user
-from database import get_connection, init_db, log_audit
+import pandas as pd
+import jdatetime
+from database import init_db, get_connection
+from auth import authenticate_user
 
-# --- تنظیمات صفحه و ظاهر (UI) ---
-st.set_page_config(
-    page_title="سیستم لاگ‌بوک آزمایشگاهی", page_icon="🧪", layout="wide"
-)
-
-# راه‌اندازی دیتابیس در شروع اجرا
+# راه‌اندازی اولیه دیتابیس
 init_db()
 
-
-# کش کردن کوئری‌های استاتیک برای بهبود کارایی
-@st.cache_data(ttl=60)
-def load_cached_data(query):
-  conn = get_connection()
-  df = pd.read_sql(query, conn)
-  conn.close()
-  return df
-
-
-# --- مدیریت نشست (Session) ---
-if "user" not in st.session_state:
-  st.session_state["user"] = None
-  st.session_state["role"] = None
-
-# --- صفحه ورود ---
-if not st.session_state["user"]:
-  st.title("🔐 ورود به سیستم لاگ‌بوک آزمایشگاهی")
-  col1, col2 = st.columns(2)
-  with col1:
-    username = st.text_input("نام کاربری")
-    password = st.text_input("رمز عبور", type="password")
-
-    if st.button("ورود به سیستم", use_container_width=True):
-      role = verify_user(username, password)
-      if role:
-        st.session_state["user"] = username
-        st.session_state["role"] = role
-        log_audit(username, "ورود به سیستم")
-        st.rerun()
-      else:
-        st.error("نام کاربری یا رمز عبور اشتباه است.")
-  st.stop()
-
-# --- نوار کناری (Sidebar) ---
-st.sidebar.markdown(f"### 👤 کاربر: {st.session_state['user']}")
-st.sidebar.markdown(f"📌 **نقش:** `{st.session_state['role']}`")
-st.sidebar.markdown("---")
-
-if st.sidebar.button("🚪 خروج از حساب", use_container_width=True):
-  log_audit(st.session_state["user"], "خروج از سیستم")
-  st.session_state["user"] = None
-  st.session_state["role"] = None
-  st.rerun()
-
-st.sidebar.markdown("### 🗂️ منوی اصلی سامانه")
-menu = st.sidebar.radio(
-    "انتخاب کنید:",
-    [
-        "📝 ثبت گزارش جدید (لاگ‌بوک)",
-        "🖥️ مشاهده دستگاه‌ها و وضعیت",
-        "⚙️ مدیریت دستگاه‌ها (ادمین)",
-        "📍 مدیریت محل‌های استقرار (ادمین)",
-        "👨‍🔬 مدیریت کارشناسان (ادمین)",
-        "👥 مدیریت کاربران (ادمین)",
-        "📊 گزارشات و قابلیت پرینت",
-    ],
+st.set_page_config(
+    page_title="QuickLab - سامانه آزمایشگاهی", layout="wide"
 )
 
-role = st.session_state["role"]
+# مدیریت نشست (Session State) برای لاگین
+if "logged_in" not in st.session_state:
+  st.session_state["logged_in"] = False
+  st.session_state["username"] = ""
+  st.session_state["role"] = ""
 
-# --- بخش ۱: ثبت گزارش جدید ---
-if menu == "📝 ثبت گزارش جدید (لاگ‌بوک)":
-  st.header("📝 ثبت گزارش / وضعیت جدید دستگاه")
+# صفحه ورود
+if not st.session_state["logged_in"]:
+  st.title("🔐 ورود به سامانه مدیریت آزمایشگاه (QuickLab)")
 
-  devices_df = load_cached_data("SELECT * FROM devices")
+  with st.form("login_form"):
+    username = st.text_input("نام کاربری")
+    password = st.text_input("رمز عبور", type="password")
+    submit = st.form_submit_button("ورود")
 
-  if devices_df.empty:
-    st.warning("ابتدا باید حداقل یک دستگاه توسط ادمین تعریف شود.")
-  else:
-    device_names = devices_df["name"].tolist()
-    selected_device = st.selectbox("انتخاب دستگاه", device_names)
-    dev_info = devices_df[devices_df["name"] == selected_device].iloc[0]
-
-    st.info(
-        f"📍 محل استقرار: {dev_info['location']} | 👨‍🔬 کارشناس مسئول:"
-        f" {dev_info['expert']} | 🌡️ دمای پیش‌فرض: {dev_info['default_temp']}°C"
-    )
-
-    with st.form("log_form"):
-      reporter = st.text_input(
-          "نام فرد گزارش‌دهنده", value=st.session_state["user"]
-      )
-      recorded_temp = st.number_input(
-          "دمای اندازه‌گیری شده فعلی (°C)",
-          value=float(dev_info["default_temp"]),
-      )
-      recorded_param = st.text_input(
-          "وضعیت پارامتر خاص", value=str(dev_info["default_param"])
-      )
-      description = st.text_area("توضیحات / شرح وضعیت")
-      is_broken = st.checkbox("⚠️ اعلام خرابی دستگاه")
-
-      submit_log = st.form_submit_button("ثبت گزارش نهایی")
-
-      if submit_log:
-        is_warning = 0
-        warning_messages = []
-        if recorded_temp != dev_info["default_temp"]:
-          is_warning = 1
-          warning_messages.append(
-              f"مغایرت دما! (مقدار ثبت‌شده: {recorded_temp}, مقدار پیش‌فرض:"
-              f" {dev_info['default_temp']})"
-          )
-
-        now_shamsi = jdatetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-
-        conn = get_connection()
-        if conn:
-          cursor = conn.cursor()
-          try:
-            cursor.execute(
-                """
-                                INSERT INTO logs (device_name, reporter, datetime_shamsi, temp_recorded, param_recorded, is_warning, description, is_broken)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                (
-                    selected_device,
-                    reporter,
-                    now_shamsi,
-                    recorded_temp,
-                    recorded_param,
-                    is_warning,
-                    description,
-                    1 if is_broken else 0,
-                ),
-            )
-
-            if is_broken:
-              cursor.execute(
-                  "UPDATE devices SET status = 'خراب' WHERE name = ?",
-                  (selected_device,),
-              )
-
-            conn.commit()
-            log_audit(
-                st.session_state["user"],
-                f"ثبت گزارش برای دستگاه {selected_device}",
-            )
-
-            if warning_messages:
-              st.warning("⚠️ اخطار: " + " | ".join(warning_messages))
-            st.success("گزارش با موفقیت در تاریخ شمسی ثبت شد.")
-          except Exception as e:
-            st.error(f"خطا در ثبت گزارش: {e}")
-          finally:
-            conn.close()
-
-# --- بخش ۲: مشاهده دستگاه‌ها و وضعیت ---
-elif menu == "🖥️ مشاهده دستگاه‌ها و وضعیت":
-  st.header("🖥️ لیست دستگاه‌ها، اعتبار کالیبراسیون و وضعیت")
-  devices_df = load_cached_data("SELECT * FROM devices")
-  if devices_df.empty:
-    st.info("هیچ دستگاهی ثبت نشده است.")
-  else:
-    st.dataframe(devices_df, use_container_width=True)
-
-# --- بخش ۳: مدیریت دستگاه‌ها (ادمین) ---
-elif menu == "⚙️ مدیریت دستگاه‌ها (ادمین)":
-  if role != "مدیر سیستم (ادمین)":
-    st.error("شما به این بخش دسترسی ندارید.")
-  else:
-    st.header("⚙️ مدیریت دستگاه‌ها (افزودن، ویرایش و حذف)")
-    conn = get_connection()
-    experts_df = pd.read_sql("SELECT name FROM experts", conn)
-    locations_df = pd.read_sql("SELECT name FROM locations", conn)
-    devices_df = pd.read_sql("SELECT * FROM devices", conn)
-    conn.close()
-
-    expert_list = experts_df["name"].tolist() if not experts_df.empty else []
-    location_list = locations_df["name"].tolist() if not locations_df.empty else []
-
-    tab1, tab2, tab3 = st.tabs(
-        ["افزودن دستگاه", "ویرایش دستگاه", "حذف دستگاه"]
-    )
-
-    with tab1:
-      if not expert_list or not location_list:
-        st.warning(
-            "ابتدا باید حداقل یک 'محل استقرار' و یک 'کارشناس مسئول' تعریف کنید."
-        )
+    if submit:
+      user = authenticate_user(username, password)
+      if user:
+        st.session_state["logged_in"] = True
+        st.session_state["username"] = user["username"]
+        st.session_state["role"] = user["role"]
+        st.success("ورود موفقیت‌آمیز بود!")
+        st.rerun()
       else:
-        with st.form("add_device_form"):
-          d_name = st.text_input("نام دستگاه")
-          d_loc = st.selectbox("محل استقرار", location_list)
-          d_expert = st.selectbox("کارشناس مسئول", expert_list)
-          d_temp = st.number_input("دمای پیش‌فرض (°C)", value=25.0)
-          d_param = st.text_input("سایر پارامترهای پیش‌فرض")
-          d_cal = st.text_input("اعتبار کالیبراسیون (مثلا 1403/12/10)")
-          submit_add = st.form_submit_button("ثبت دستگاه جدید")
-
-          if submit_add and d_name:
-            conn = get_connection()
-            if conn:
-              cursor = conn.cursor()
-              try:
-                cursor.execute(
-                    """
-                                        INSERT INTO devices (name, location, expert, default_temp, default_param, calibration_date, status)
-                                        VALUES (?, ?, ?, ?, ?, ?, 'سالم')
-                                    """,
-                    (d_name, d_loc, d_expert, d_temp, d_param, d_cal),
-                )
-                conn.commit()
-                log_audit(st.session_state["user"], f"افزودن دستگاه {d_name}")
-                st.success("دستگاه با موفقیت افزوده شد.")
-                st.rerun()
-              except Exception as e:
-                st.error(f"خطا: {e}")
-              finally:
-                conn.close()
-
-    with tab2:
-      if devices_df.empty:
-        st.info("دستگاهی برای ویرایش وجود ندارد.")
-      else:
-        selected_dev_id = st.selectbox(
-            "انتخاب دستگاه جهت ویرایش",
-            devices_df["id"],
-            format_func=lambda x: devices_df[devices_df["id"] == x][
-                "name"
-            ].values[0],
+        st.error(
+            "نام کاربری یا رمز عبور اشتباه است و یا حساب کاربری غیرفعال است."
         )
-        dev_row = devices_df[devices_df["id"] == selected_dev_id].iloc[0]
 
-        with st.form("edit_device_form"):
-          e_name = st.text_input("نام دستگاه", value=dev_row["name"])
-          e_loc = st.selectbox(
-              "محل استقرار",
-              location_list,
-              index=(
-                  location_list.index(dev_row["location"])
-                  if dev_row["location"] in location_list
-                  else 0
-              ),
-          )
-          e_expert = st.selectbox(
-              "کارشناس مسئول",
-              expert_list,
-              index=(
-                  expert_list.index(dev_row["expert"])
-                  if dev_row["expert"] in expert_list
-                  else 0
-              ),
-          )
-          e_temp = st.number_input(
-              "دمای پیش‌فرض", value=float(dev_row["default_temp"])
-          )
-          e_param = st.text_input(
-              "پارامتر پیش‌فرض", value=str(dev_row["default_param"])
-          )
-          e_cal = st.text_input(
-              "اعتبار کالیبراسیون", value=str(dev_row["calibration_date"])
-          )
-          e_status = st.selectbox(
-              "وضعیت دستگاه",
-              ["سالم", "خراب", "در دست تعمیر"],
-              index=["سالم", "خراب", "در دست تعمیر"].index(dev_row["status"]),
-          )
+else:
+  # منوی سایدبار و سطوح دسترسی
+  role = st.session_state["role"]
+  username = st.session_state["username"]
 
-          submit_edit = st.form_submit_button("ذخیره تغییرات دستگاه")
+  st.sidebar.title(f"👤 کاربر: {username}")
+  st.sidebar.markdown(f"**نقش کاربری:** `{role}`")
 
-          if submit_edit:
-            conn = get_connection()
-            if conn:
-              cursor = conn.cursor()
-              try:
-                cursor.execute(
-                    """
-                                        UPDATE devices SET name=?, location=?, expert=?, default_temp=?, default_param=?, calibration_date=?, status=?
-                                        WHERE id=?
-                                    """,
-                    (
-                        e_name,
-                        e_loc,
-                        e_expert,
-                        e_temp,
-                        e_param,
-                        e_cal,
-                        e_status,
-                        selected_dev_id,
-                    ),
-                )
-                conn.commit()
-                log_audit(st.session_state["user"], f"ویرایش دستگاه {e_name}")
-                st.success("اطلاعات دستگاه به‌روزرسانی شد.")
-                st.rerun()
-              except Exception as e:
-                st.error(f"خطا: {e}")
-              finally:
-                conn.close()
+  menu_options = []
 
-    with tab3:
-      if devices_df.empty:
-        st.info("دستگاهی برای حذف وجود ندارد.")
-      else:
-        del_dev_id = st.selectbox(
-            "انتخاب دستگاه جهت حذف",
-            devices_df["id"],
-            format_func=lambda x: devices_df[devices_df["id"] == x][
-                "name"
-            ].values[0],
-            key="del_dev_box",
-        )
-        # افزودن تاییدیه حذف برای جلوگیری از حذف تصادفی
-        confirm_del = st.checkbox("تایید می‌کنم که این دستگاه حذف شود.")
-        if st.button("حذف دستگاه انتخاب‌شده"):
-          if confirm_del:
-            conn = get_connection()
-            if conn:
-              cursor = conn.cursor()
-              cursor.execute("DELETE FROM devices WHERE id = ?", (del_dev_id,))
-              conn.commit()
-              conn.close()
-              log_audit(
-                  st.session_state["user"],
-                  f"حذف دستگاه با شناسه {del_dev_id}",
-              )
-              st.success("دستگاه با موفقیت حذف شد.")
-              st.rerun()
-          else:
-            st.warning("لطفاً تاییدیه حذف را علامت بزنید.")
+  if role == "مدیر سیستم":
+    menu_options = [
+        "ثبت گزارش جدید",
+        "مدیریت دستگاه‌ها و پارامترها",
+        "مدیریت کاربران",
+        "گزارشات و ممیزی",
+    ]
+  elif role == "کارشناس":
+    menu_options = [
+        "ثبت گزارش جدید",
+        "مدیریت دستگاه‌ها و پارامترها",
+        "گزارشات و ممیزی",
+    ]
+  elif role == "گزارشگر":
+    menu_options = ["ثبت گزارش جدید", "گزارشات و ممیزی"]
+  elif role == "مشاهده‌کننده":
+    menu_options = ["مشاهده دستگاه‌ها و پارامترها", "گزارشات و ممیزی"]
 
-# --- بخش ۴: مدیریت محل‌های استقرار (ادمین) ---
-elif menu == "📍 مدیریت محل‌های استقرار (ادمین)":
-  if role != "مدیر سیستم (ادمین)":
-    st.error("شما به این بخش دسترسی ندارید.")
-  else:
-    st.header("📍 مدیریت محل‌های استقرار (افزودن، ویرایش و حذف)")
-    conn = get_connection()
-    locs_df = pd.read_sql("SELECT * FROM locations", conn)
-    conn.close()
+  selected_menu = st.sidebar.selectbox("منوی اصلی", menu_options)
 
-    with st.form("add_loc_form"):
-      new_loc = st.text_input("نام محل استقرار جدید (مثلا آزمایشگاه شیمی)")
-      sub_loc = st.form_submit_button("افزودن محل استقرار")
-      if sub_loc and new_loc:
-        conn = get_connection()
-        if conn:
-          cursor = conn.cursor()
-          try:
-            cursor.execute("INSERT INTO locations (name) VALUES (?)", (new_loc,))
-            conn.commit()
-            log_audit(
-                st.session_state["user"], f"افزودن محل استقرار {new_loc}"
-            )
-            st.success("محل استقرار افزوده شد.")
-            st.rerun()
-          except Exception:
-            st.error("این محل استقرار از قبل وجود دارد یا خطایی رخ داده است.")
-          finally:
-            conn.close()
+  if st.sidebar.button("خروج از سیستم"):
+    st.session_state["logged_in"] = False
+    st.rerun()
 
-    st.markdown("### لیست و مدیریت محل‌های موجود")
-    if locs_df.empty:
-      st.info("محیطی ثبت نشده است.")
+  # -------------------------------------------------------------
+  # ۱. بخش ثبت گزارش جدید
+  # -------------------------------------------------------------
+  if selected_menu == "ثبت گزارش جدید":
+    st.title("📝 ثبت گزارش و پارامترهای دستگاه")
+
+    if role == "مشاهده‌کننده":
+      st.error(
+          "شما دسترسی لازم برای ثبت گزارش را ندارید (نقش شما مشاهده‌کننده"
+          " است)."
+      )
     else:
-      for idx, row in locs_df.iterrows():
-        with st.form(f"loc_form_{row['id']}"):
-          col1, col2, col3 = st.columns([3, 1, 1])
-          updated_loc_name = col1.text_input(
-              "ویرایش نام", value=row["name"], label_visibility="collapsed"
-          )
-          up_btn = col2.form_submit_button("بروزرسانی")
-          del_btn = col3.form_submit_button("حذف")
-
-          if up_btn:
-            conn = get_connection()
-            if conn:
-              cursor = conn.cursor()
-              try:
-                cursor.execute(
-                    "UPDATE locations SET name = ? WHERE id = ?",
-                    (updated_loc_name, row["id"]),
-                )
-                conn.commit()
-                log_audit(
-                    st.session_state["user"],
-                    f"ویرایش محل استقرار به {updated_loc_name}",
-                )
-                st.success("بروز شد.")
-                st.rerun()
-              except Exception:
-                st.error("خطا در نام‌گذاری یا تکراری بودن.")
-              finally:
-                conn.close()
-
-          if del_btn:
-            conn = get_connection()
-            if conn:
-              cursor = conn.cursor()
-              cursor.execute("DELETE FROM locations WHERE id = ?", (row["id"],))
-              conn.commit()
-              conn.close()
-              log_audit(
-                  st.session_state["user"], f"حذف محل استقرار id:{row['id']}"
-              )
-              st.rerun()
-
-# --- بخش ۵: مدیریت کارشناسان (ادمین) ---
-elif menu == "👨‍🔬 مدیریت کارشناسان (ادمین)":
-  if role != "مدیر سیستم (ادمین)":
-    st.error("شما به این بخش دسترسی ندارید.")
-  else:
-    st.header("👨‍🔬 مدیریت کارشناسان مسئول (افزودن، ویرایش و حذف)")
-    conn = get_connection()
-    experts_df = pd.read_sql("SELECT * FROM experts", conn)
-    conn.close()
-
-    with st.form("add_exp_form"):
-      new_expert = st.text_input("نام کارشناس جدید")
-      sub_exp = st.form_submit_button("افزودن کارشناس")
-      if sub_exp and new_expert:
-        conn = get_connection()
-        if conn:
-          cursor = conn.cursor()
-          try:
-            cursor.execute("INSERT INTO experts (name) VALUES (?)", (new_expert,))
-            conn.commit()
-            log_audit(st.session_state["user"], f"افزودن کارشناس {new_expert}")
-            st.success("کارشناس افزوده شد.")
-            st.rerun()
-          except Exception:
-            st.error("این کارشناس از قبل وجود دارد.")
-          finally:
-            conn.close()
-
-    st.markdown("### لیست و مدیریت کارشناسان موجود")
-    if experts_df.empty:
-      st.info("کارشناسی ثبت نشده است.")
-    else:
-      for idx, row in experts_df.iterrows():
-        with st.form(f"exp_form_{row['id']}"):
-          col1, col2, col3 = st.columns([3, 1, 1])
-          updated_exp_name = col1.text_input(
-              "ویرایش نام", value=row["name"], label_visibility="collapsed"
-          )
-          up_exp_btn = col2.form_submit_button("بروزرسانی")
-          del_exp_btn = col3.form_submit_button("حذف")
-
-          if up_exp_btn:
-            conn = get_connection()
-            if conn:
-              cursor = conn.cursor()
-              try:
-                cursor.execute(
-                    "UPDATE experts SET name = ? WHERE id = ?",
-                    (updated_exp_name, row["id"]),
-                )
-                conn.commit()
-                log_audit(
-                    st.session_state["user"],
-                    f"ویرایش کارشناس به {updated_exp_name}",
-                )
-                st.success("بروز شد.")
-                st.rerun()
-              except Exception:
-                st.error("خطا در بروزرسانی نام کارشناس.")
-              finally:
-                conn.close()
-
-          if del_exp_btn:
-            conn = get_connection()
-            if conn:
-              cursor = conn.cursor()
-              cursor.execute("DELETE FROM experts WHERE id = ?", (row["id"],))
-              conn.commit()
-              conn.close()
-              log_audit(
-                  st.session_state["user"], f"حذف کارشناس id:{row['id']}"
-              )
-              st.rerun()
-
-# --- بخش ۶: مدیریت کاربران (ادمین) ---
-elif menu == "👥 مدیریت کاربران (ادمین)":
-  if role != "مدیر سیستم (ادمین)":
-    st.error("شما دسترسی ندارید.")
-  else:
-    st.header("👥 کنترل دسترسی و کاربران سیستم")
-
-    with st.form("add_user_form"):
-      u_name = st.text_input("نام کاربری جدید")
-      u_pass = st.text_input("رمز عبور", type="password")
-      u_role = st.selectbox(
-          "سطح دسترسی",
-          [
-              "مدیر سیستم (ادمین)",
-              "کارشناس گزارش‌دهنده (ریپورت)",
-              "مشاهده‌کننده",
-          ],
+      conn = get_connection()
+      devices_df = pd.read_sql(
+          "SELECT * FROM devices WHERE status = 'فعال'", conn
       )
-      sub_user = st.form_submit_button("ایجاد کاربر جدید")
 
-      if sub_user and u_name and u_pass:
-        success = create_user(u_name, u_pass, u_role)
-        if success:
-          log_audit(st.session_state["user"], f"ایجاد کاربر جدید {u_name}")
-          st.success("کاربر با موفقیت ایجاد شد.")
-          st.rerun()
+      if devices_df.empty:
+        st.warning("هیچ دستگاه فعالی در سیستم ثبت نشده است.")
+      else:
+        dev_names = devices_df["name"].tolist()
+        selected_dev_name = st.selectbox("انتخاب دستگاه", dev_names)
+
+        dev_info = devices_df[
+            devices_df["name"] == selected_dev_name
+        ].iloc[0]
+        dev_id = dev_info["id"]
+
+        st.info(
+            f"محل استقرار دستگاه: **{dev_info['location']}**"
+        )
+
+        # دریافت پارامترهای پویای این دستگاه
+        params_df = pd.read_sql(
+            "SELECT * FROM device_parameters WHERE device_id = ? AND status ="
+            " 'فعال'",
+            conn,
+            params=(dev_id,),
+        )
+
+        if params_df.empty:
+          st.warning(
+              "هیچ پارامتری برای این دستگاه تعریف نشده است. لطفاً از طریق بخش"
+              " مدیریت دستگاه‌ها پارامتر اضافه کنید."
+          )
         else:
-          st.error("خطا: این نام کاربری قبلاً ثبت شده است یا خطایی رخ داد.")
+          st.markdown("### مقادیر پارامترهای دستگاه")
+          recorded_values = {}
+          has_warning = False
 
-    st.subheader("لیست کاربران فعلی سیستم")
+          for idx, row in params_df.iterrows():
+            p_name = row["param_name"]
+            p_default = row["default_value"]
+
+            label = (
+                f"مقدار برای {p_name} (استاندارد/پیش‌فرض:"
+                f" {p_default if p_default else 'ندارد'})"
+            )
+            val = st.text_input(label, key=f"param_input_{idx}")
+            recorded_values[p_name] = val
+
+            # بررسی مغایرت در صورت وجود مقدار پیش‌فرض
+            if p_default and val and (val != p_default):
+              has_warning = True
+              st.warning(
+                  f"⚠️ مغایرت در پارامتر **{p_name}**! مقدار ثبت‌شده: `{val}` |"
+                  f" مقدار استاندارد: `{p_default}`"
+              )
+
+              # پخش بوق صوتی و هشدار مرورگر
+              audio_html = """
+                            <audio autoplay>
+                                <source src="https://www.soundjay.com/buttons/sounds/beep-07.mp3" type="audio/mpeg">
+                            </audio>
+                            """
+              st.markdown(audio_html, unsafe_allow_html=True)
+
+          if st.button("💾 ثبت نهایی گزارش"):
+            current_jalali = str(jdatetime.datetime.now().strftime("%Y/%m/%d %H:%M"))
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO logs (device_id, username, jalali_date,"
+                " has_warning) VALUES (?, ?, ?, ?)",
+                (dev_id, username, current_jalali, 1 if has_warning else 0),
+            )
+            log_id = cursor.lastrowid
+
+            for p_name, val in recorded_values.items():
+              cursor.execute(
+                  "INSERT INTO log_parameters (log_id, param_name,"
+                  " recorded_value) VALUES (?, ?, ?)",
+                  (log_id, p_name, val),
+              )
+
+            conn.commit()
+            st.success("گزارش با موفقیت ثبت شد!")
+
+      conn.close()
+
+  # -------------------------------------------------------------
+  # ۲. مدیریت دستگاه‌ها و پارامترها (مخصوص مدیر و کارشناس)
+  # -------------------------------------------------------------
+  elif selected_menu == "مدیریت دستگاه‌ها و پارامترها":
+    st.title("⚙️ مدیریت دستگاه‌ها، موقعیت‌ها و پارامترهای پویا")
+
+    if role not in ["مدیر سیستم", "کارشناس"]:
+      st.error("شما دسترسی لازم به این بخش را ندارید.")
+    else:
+      tab1, tab2 = st.tabs(
+          ["افزودن دستگاه و پارامتر جدید", "لیست و ویرایش دستگاه‌ها"]
+      )
+
+      with tab1:
+        with st.form("new_device_form"):
+          d_name = st.text_input("نام دستگاه جدید")
+          d_location = st.text_input("محل قرارگیری (Location)")
+
+          st.markdown("---")
+          st.markdown("#### تعریف پارامترهای سفارشی (مقادیر پیش‌فرض اختیاری)")
+
+          p1_name = st.text_input("نام پارامتر ۱ (مثلاً CO2 یا Shaking)")
+          p1_def = st.text_input("مقدار پیش‌فرض پارامتر ۱ (اختیاری)")
+
+          p2_name = st.text_input("نام پارامتر ۲ (اختیاری)")
+          p2_def = st.text_input("مقدار پیش‌فرض پارامتر ۲ (اختیاری)")
+
+          submit_dev = st.form_submit_button("ایجاد دستگاه و پارامترها")
+
+          if submit_dev and d_name:
+            conn = get_connection()
+            cursor = conn.cursor()
+            try:
+              cursor.execute(
+                  "INSERT INTO devices (name, location) VALUES (?, ?)",
+                  (d_name, d_location),
+              )
+              dev_id = cursor.lastrowid
+
+              if p1_name:
+                cursor.execute(
+                    "INSERT INTO device_parameters (device_id, param_name,"
+                    " default_value) VALUES (?, ?, ?)",
+                    (dev_id, p1_name, p1_def),
+                )
+              if p2_name:
+                cursor.execute(
+                    "INSERT INTO device_parameters (device_id, param_name,"
+                    " default_value) VALUES (?, ?, ?)",
+                    (dev_id, p2_name, p2_def),
+                )
+
+              # ثبت در ممیزی
+              cursor.execute(
+                  "INSERT INTO audit_logs (username, action, timestamp) VALUES"
+                  " (?, ?, ?)",
+                  (
+                      username,
+                      f"افزودن دستگاه {d_name}",
+                      str(jdatetime.datetime.now()),
+                  ),
+              )
+
+              conn.commit()
+              st.success(
+                  "دستگاه و پارامترهای آن با موفقیت ثبت شد!"
+              )
+            except Exception as e:
+              st.error(f"خطا در ثبت دستگاه (احتمالاً نام تکراری است): {e}")
+            finally:
+              conn.close()
+
+      with tab2:
+        conn = get_connection()
+        devices_df = pd.read_sql("SELECT * FROM devices", conn)
+        conn.close()
+        st.dataframe(devices_df)
+
+  # -------------------------------------------------------------
+  # ۳. مدیریت کاربران (مخصوص مدیر سیستم)
+  # -------------------------------------------------------------
+  elif selected_menu == "مدیریت کاربران":
+    st.title("👥 مدیریت کاربران و سطوح دسترسی")
+
+    if role != "مدیر سیستم":
+      st.error("فقط مدیر سیستم به این بخش دسترسی دارد.")
+    else:
+      conn = get_connection()
+      users_df = pd.read_sql("SELECT id, username, role, status FROM users", conn)
+      conn.close()
+      st.dataframe(users_df)
+
+  # -------------------------------------------------------------
+  # ۴. گزارشات و ممیزی (قابل مشاهده برای همه با سطوح مختلف)
+  # -------------------------------------------------------------
+  elif selected_menu in ["گزارشات و ممیزی", "مشاهده دستگاه‌ها و پارامترها"]:
+    st.title("📊 گزارشات ثبت‌شده و ممیزی سیستم (Audit Trail)")
+
     conn = get_connection()
-    users_df = pd.read_sql("SELECT username, role FROM users", conn)
-    conn.close()
-    st.dataframe(users_df, use_container_width=True)
-
-# --- بخش ۷: گزارشات و قابلیت پرینت بر اساس فیلتر ---
-elif menu == "📊 گزارشات و قابلیت پرینت":
-  if role not in ["مدیر سیستم (ادمین)", "کارشناس گزارش‌دهنده (ریپورت)"]:
-    st.error("شما به این بخش دسترسی ندارید.")
-  else:
-    st.header("📊 گزارشات لاگ‌بوک و چاپ بر اساس فیلتر")
-
-    conn = get_connection()
-    logs_df = pd.read_sql("SELECT * FROM logs", conn)
-    devices_df = pd.read_sql("SELECT name FROM devices", conn)
+    logs_df = pd.read_sql(
+        """
+        SELECT logs.id, devices.name AS device_name, logs.username, logs.jalali_date, logs.has_warning 
+        FROM logs 
+        JOIN devices ON logs.device_id = devices.id
+    """,
+        conn,
+    )
     conn.close()
 
     if logs_df.empty:
-      st.info("هیچ گزارشی برای فیلتر و پرینت وجود ندارد.")
+      st.info("هیچ گزارشی تاکنون ثبت نشده است.")
     else:
-      st.subheader("🔍 فیلتر پیشرفته گزارش‌ها")
-      col1, col2, col3 = st.columns(3)
-
-      device_filter_options = ["همه دستگاه‌ها"] + (
-          devices_df["name"].tolist() if not devices_df.empty else []
-      )
-      selected_device_filter = col1.selectbox(
-          "فیلتر بر اساس دستگاه", device_filter_options
-      )
-
-      warning_filter_options = ["همه", "فقط دارای اخطار (مغایرت)", "عادی"]
-      selected_warning_filter = col2.selectbox(
-          "فیلتر بر اساس وضعیت اخطار", warning_filter_options
-      )
-
-      broken_filter_options = ["همه", "فقط اعلام خرابی‌شده"]
-      selected_broken_filter = col3.selectbox(
-          "فیلتر بر اساس خرابی", broken_filter_options
-      )
-
-      filtered_df = logs_df.copy()
-      if selected_device_filter != "همه دستگاه‌ها":
-        filtered_df = filtered_df[
-            filtered_df["device_name"] == selected_device_filter
-        ]
-
-      if selected_warning_filter == "فقط دارای اخطار (مغایرت)":
-        filtered_df = filtered_df[filtered_df["is_warning"] == 1]
-      elif selected_warning_filter == "عادی":
-        filtered_df = filtered_df[filtered_df["is_warning"] == 0]
-
-      if selected_broken_filter == "فقط اعلام خرابی‌شده":
-        filtered_df = filtered_df[filtered_df["is_broken"] == 1]
-
-      st.markdown(
-          f"**تعداد نتایج یافت شده:** {len(filtered_df)} مورد گزارش"
-      )
-      st.dataframe(filtered_df, use_container_width=True)
-
-      st.markdown("---")
-      st.subheader("🖨️ خروجی و آماده‌سازی برای پرینت")
-
-      if st.button("🖨️ ایجاد فایل HTML نسخه قابل چاپ"):
-        html_content = f"""
-                <html dir="rtl">
-                <head>
-                    <title>گزارش لاگ‌بوک آزمایشگاه</title>
-                    <style>
-                        body {{ font-family: Tahoma, sans-serif; direction: rtl; padding: 20px; }}
-                        h2 {{ text-align: center; }}
-                        p {{ font-size: 14px; }}
-                        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-                        th, td {{ border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 12px; }}
-                        th {{ background-color: #f2f2f2; }}
-                    </style>
-                </head>
-                <body>
-                    <h2>گزارش رسمی دستگاه‌های آزمایشگاهی</h2>
-                    <p><strong>تاریخ تهیه گزارش:</strong> {jdatetime.datetime.now().strftime('%Y/%m/%d %H:%M:%S')}</p>
-                    <p><strong>فیلترهای اعمال شده:</strong> دستگاه: {selected_device_filter} | وضعیت اخطار: {selected_warning_filter}</p>
-                    {filtered_df.to_html(index=False)}
-                    <br><br>
-                    <div style="display: flex; justify-content: space-between; margin-top: 50px;">
-                        <p>امضای مدیر آزمایشگاه: ........................</p>
-                        <p>امضای کارشناس مسئول: ........................</p>
-                    </div>
-                    <script>
-                        window.print();
-                    </script>
-                </body>
-                </html>
-                """
-        st.download_button(
-            label="📥 دانلود فایل HTML جهت چاپ مستقیم",
-            data=html_content,
-            file_name="lab_report.html",
-            mime="text/html",
-        )
+      st.dataframe(logs_df)
