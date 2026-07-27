@@ -1,8 +1,19 @@
+برای حل این مشکل، کدهای برنامه را بررسی و اصلاح کردم:
+ 1. **رفع مشکل منوها و بهبود ظاهر:** منوهای کناری زیباتر و دسته‌بندی‌شده‌تر شدند.
+ 2. **افزودن قابلیت ویرایش و حذف کامل:** بخش‌های مدیریت دستگاه‌ها، کارشناسان و **محل‌های استقرار** کامل شد (اکنون برای هرکدام امکان افزودن، ویرایش و حذف وجود دارد).
+ 3. **بررسی و اصلاح بخش افزودن کاربر:** بخش ایجاد کاربر در ادمین بررسی شد و با رفع خطاهای احتمالی پایگاه داده به‌صورت ایمن پیاده‌سازی شد.
+کد کامل و اصلاح‌شده‌ی فایل app.py در ادامه آماده است:
+```python
 from datetime import datetime
 import sqlite3
 import jdatetime
 import pandas as pd
 import streamlit as st
+
+# --- تنظیمات صفحه و ظاهر (UI) ---
+st.set_page_config(
+    page_title="سیستم لاگ‌بوک آزمایشگاهی", page_icon="🧪", layout="wide"
+)
 
 # --- تنظیمات دیتابیس SQLite ---
 DB_NAME = "lab_logbook.db"
@@ -17,6 +28,12 @@ def init_db():
             username TEXT PRIMARY KEY,
             password TEXT,
             role TEXT
+        )
+    """)
+  cursor.execute("""
+        CREATE TABLE IF NOT EXISTS locations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE
         )
     """)
   cursor.execute("""
@@ -93,54 +110,59 @@ if "user" not in st.session_state:
 # --- صفحه ورود ---
 if not st.session_state["user"]:
   st.title("🔐 ورود به سیستم لاگ‌بوک آزمایشگاهی")
-  username = st.text_input("نام کاربری")
-  password = st.text_input("رمز عبور", type="password")
+  col1, col2 = st.columns(2)
+  with col1:
+    username = st.text_input("نام کاربری")
+    password = st.text_input("رمز عبور", type="password")
 
-  if st.button("ورود"):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT role FROM users WHERE username = ? AND password = ?",
-        (username, password),
-    )
-    res = cursor.fetchone()
-    conn.close()
+    if st.button("ورود به سیستم", use_container_width=True):
+      conn = sqlite3.connect(DB_NAME)
+      cursor = conn.cursor()
+      cursor.execute(
+          "SELECT role FROM users WHERE username = ? AND password = ?",
+          (username, password),
+      )
+      res = cursor.fetchone()
+      conn.close()
 
-    if res:
-      st.session_state["user"] = username
-      st.session_state["role"] = res[0]
-      log_audit(username, "ورود به سیستم")
-      st.rerun()
-    else:
-      st.error("نام کاربری یا رمز عبور اشتباه است.")
+      if res:
+        st.session_state["user"] = username
+        st.session_state["role"] = res[0]
+        log_audit(username, "ورود به سیستم")
+        st.rerun()
+      else:
+        st.error("نام کاربری یا رمز عبور اشتباه است.")
   st.stop()
 
-# --- نوار کناری ---
-st.sidebar.title(f"خوش آمدید، {st.session_state['user']}")
-st.sidebar.text(f"سطح دسترسی: {st.session_state['role']}")
+# --- نوار کناری (Sidebar) شکیل‌تر ---
+st.sidebar.markdown(f"### 👤 کاربر: {st.session_state['user']}")
+st.sidebar.markdown(f"📌 **نقش:** `{st.session_state['role']}`")
+st.sidebar.markdown("---")
 
-if st.sidebar.button("خروج از حساب"):
+if st.sidebar.button("🚪 خروج از حساب", use_container_width=True):
   log_audit(st.session_state["user"], "خروج از سیستم")
   st.session_state["user"] = None
   st.session_state["role"] = None
   st.rerun()
 
+st.sidebar.markdown("### 🗂️ منوی اصلی سامانه")
 menu = st.sidebar.radio(
-    "منوی اصلی",
+    "انتخاب کنید:",
     [
-        "ثبت گزارش جدید (لاگ‌بوک)",
-        "مشاهده دستگاه‌ها و وضعیت",
-        "مدیریت دستگاه‌ها (ادمین)",
-        "مدیریت کارشناسان (ادمین)",
-        "مدیریت کاربران (ادمین)",
-        "گزارشات و قابلیت پرینت",
+        "📝 ثبت گزارش جدید (لاگ‌بوک)",
+        "🖥️ مشاهده دستگاه‌ها و وضعیت",
+        "⚙️ مدیریت دستگاه‌ها (ادمین)",
+        "📍 مدیریت محل‌های استقرار (ادمین)",
+        "👨‍🔬 مدیریت کارشناسان (ادمین)",
+        "👥 مدیریت کاربران (ادمین)",
+        "📊 گزارشات و قابلیت پرینت",
     ],
 )
 
 role = st.session_state["role"]
 
 # --- بخش ۱: ثبت گزارش جدید ---
-if menu == "ثبت گزارش جدید (لاگ‌بوک)":
+if menu == "📝 ثبت گزارش جدید (لاگ‌بوک)":
   st.header("📝 ثبت گزارش / وضعیت جدید دستگاه")
 
   conn = sqlite3.connect(DB_NAME)
@@ -173,7 +195,7 @@ if menu == "ثبت گزارش جدید (لاگ‌بوک)":
       description = st.text_area("توضیحات / شرح وضعیت")
       is_broken = st.checkbox("⚠️ اعلام خرابی دستگاه")
 
-      submit_log = st.form_submit_button("ثبت گزارش")
+      submit_log = st.form_submit_button("ثبت گزارش نهایی")
 
       if submit_log:
         is_warning = 0
@@ -224,7 +246,7 @@ if menu == "ثبت گزارش جدید (لاگ‌بوک)":
         st.success("گزارش با موفقیت در تاریخ شمسی ثبت شد.")
 
 # --- بخش ۲: مشاهده دستگاه‌ها و وضعیت ---
-elif menu == "مشاهده دستگاه‌ها و وضعیت":
+elif menu == "🖥️ مشاهده دستگاه‌ها و وضعیت":
   st.header("🖥️ لیست دستگاه‌ها، اعتبار کالیبراسیون و وضعیت")
   conn = sqlite3.connect(DB_NAME)
   devices_df = pd.read_sql("SELECT * FROM devices", conn)
@@ -235,49 +257,61 @@ elif menu == "مشاهده دستگاه‌ها و وضعیت":
     st.dataframe(devices_df, use_container_width=True)
 
 # --- بخش ۳: مدیریت دستگاه‌ها (ادمین) ---
-elif menu == "مدیریت دستگاه‌ها (ادمین)":
+elif menu == "⚙️ مدیریت دستگاه‌ها (ادمین)":
   if role != "مدیر سیستم (ادمین)":
     st.error("شما به این بخش دسترسی ندارید.")
   else:
-    st.header("⚙️ مدیریت دستگاه‌ها (افزودن و ویرایش)")
+    st.header("⚙️ مدیریت دستگاه‌ها (افزودن، ویرایش و حذف)")
     conn = sqlite3.connect(DB_NAME)
     experts_df = pd.read_sql("SELECT name FROM experts", conn)
+    locations_df = pd.read_sql("SELECT name FROM locations", conn)
     devices_df = pd.read_sql("SELECT * FROM devices", conn)
     conn.close()
 
     expert_list = experts_df["name"].tolist() if not experts_df.empty else []
-    tab1, tab2 = st.tabs(["افزودن دستگاه جدید", "ویرایش دستگاه‌های موجود"])
+    location_list = locations_df["name"].tolist() if not locations_df.empty else []
+
+    tab1, tab2, tab3 = st.tabs(
+        ["افزودن دستگاه", "ویرایش دستگاه", "حذف دستگاه"]
+    )
 
     with tab1:
-      with st.form("add_device_form"):
-        d_name = st.text_input("نام دستگاه")
-        d_loc = st.text_input("محل استقرار")
-        d_expert = st.selectbox("کارشناس مسئول", expert_list)
-        d_temp = st.number_input("دمای پیش‌فرض (°C)", value=25.0)
-        d_param = st.text_input("سایر پارامترهای پیش‌فرض")
-        d_cal = st.text_input("اعتبار کالیبراسیون (مثلا 1403/12/10)")
-        submit_add = st.form_submit_button("ثبت دستگاه")
+      if not expert_list or not location_list:
+        st.warning(
+            "ابتدا باید حداقل یک 'محل استقرار' و یک 'کارشناس مسئول' تعریف کنید."
+        )
+      else:
+        with st.form("add_device_form"):
+          d_name = st.text_input("نام دستگاه")
+          d_loc = st.selectbox("محل استقرار", location_list)
+          d_expert = st.selectbox("کارشناس مسئول", expert_list)
+          d_temp = st.number_input("دمای پیش‌فرض (°C)", value=25.0)
+          d_param = st.text_input("سایر پارامترهای پیش‌فرض")
+          d_cal = st.text_input("اعتبار کالیبراسیون (مثلا 1403/12/10)")
+          submit_add = st.form_submit_button("ثبت دستگاه جدید")
 
-        if submit_add and d_name:
-          conn = sqlite3.connect(DB_NAME)
-          cursor = conn.cursor()
-          cursor.execute(
-              """
-                        INSERT INTO devices (name, location, expert, default_temp, default_param, calibration_date, status)
-                        VALUES (?, ?, ?, ?, ?, ?, 'سالم')
-                    """,
-              (d_name, d_loc, d_expert, d_temp, d_param, d_cal),
-          )
-          conn.commit()
-          conn.close()
-          log_audit(st.session_state["user"], f"افزودن دستگاه {d_name}")
-          st.success("دستگاه با موفقیت افزوده شد.")
-          st.rerun()
+          if submit_add and d_name:
+            conn = sqlite3.connect(DB_NAME)
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                            INSERT INTO devices (name, location, expert, default_temp, default_param, calibration_date, status)
+                            VALUES (?, ?, ?, ?, ?, ?, 'سالم')
+                        """,
+                (d_name, d_loc, d_expert, d_temp, d_param, d_cal),
+            )
+            conn.commit()
+            conn.close()
+            log_audit(st.session_state["user"], f"افزودن دستگاه {d_name}")
+            st.success("دستگاه با موفقیت افزوده شد.")
+            st.rerun()
 
     with tab2:
-      if not devices_df.empty:
+      if devices_df.empty:
+        st.info("دستگاهی برای ویرایش وجود ندارد.")
+      else:
         selected_dev_id = st.selectbox(
-            "انتخاب دستگاه برای ویرایش",
+            "انتخاب دستگاه جهت ویرایش",
             devices_df["id"],
             format_func=lambda x: devices_df[devices_df["id"] == x][
                 "name"
@@ -287,7 +321,15 @@ elif menu == "مدیریت دستگاه‌ها (ادمین)":
 
         with st.form("edit_device_form"):
           e_name = st.text_input("نام دستگاه", value=dev_row["name"])
-          e_loc = st.text_input("محل استقرار", value=dev_row["location"])
+          e_loc = st.selectbox(
+              "محل استقرار",
+              location_list,
+              index=(
+                  location_list.index(dev_row["location"])
+                  if dev_row["location"] in location_list
+                  else 0
+              ),
+          )
           e_expert = st.selectbox(
               "کارشناس مسئول",
               expert_list,
@@ -312,7 +354,7 @@ elif menu == "مدیریت دستگاه‌ها (ادمین)":
               index=["سالم", "خراب", "در دست تعمیر"].index(dev_row["status"]),
           )
 
-          submit_edit = st.form_submit_button("اعمال تغییرات")
+          submit_edit = st.form_submit_button("ذخیره تغییرات دستگاه")
 
           if submit_edit:
             conn = sqlite3.connect(DB_NAME)
@@ -339,25 +381,107 @@ elif menu == "مدیریت دستگاه‌ها (ادمین)":
             st.success("اطلاعات دستگاه به‌روزرسانی شد.")
             st.rerun()
 
-# --- بخش ۴: مدیریت کارشناسان (ادمین) ---
-elif menu == "مدیریت کارشناسان (ادمین)":
+    with tab3:
+      if devices_df.empty:
+        st.info("دستگاهی برای حذف وجود ندارد.")
+      else:
+        del_dev_id = st.selectbox(
+            "انتخاب دستگاه جهت حذف",
+            devices_df["id"],
+            format_func=lambda x: devices_df[devices_df["id"] == x][
+                "name"
+            ].values[0],
+            key="del_dev_box",
+        )
+        if st.button("حذف دستگاه انتخاب‌شده"):
+          conn = sqlite3.connect(DB_NAME)
+          cursor = conn.cursor()
+          cursor.execute("DELETE FROM devices WHERE id = ?", (del_dev_id,))
+          conn.commit()
+          conn.close()
+          log_audit(
+              st.session_state["user"], f"حذف دستگاه با شناسه {del_dev_id}"
+          )
+          st.success("دستگاه با موفقیت حذف شد.")
+          st.rerun()
+
+# --- بخش ۴: مدیریت محل‌های استقرار (ادمین) ---
+elif menu == "📍 مدیریت محل‌های استقرار (ادمین)":
   if role != "مدیر سیستم (ادمین)":
     st.error("شما به این بخش دسترسی ندارید.")
   else:
-    st.header("👨‍🔬 مدیریت کارشناسان مسئول")
+    st.header("📍 مدیریت محل‌های استقرار (افزودن، ویرایش و حذف)")
+    conn = sqlite3.connect(DB_NAME)
+    locs_df = pd.read_sql("SELECT * FROM locations", conn)
+    conn.close()
+
+    with st.form("add_loc_form"):
+      new_loc = st.text_input("نام محل استقرار جدید (مثلا آزمایشگاه شیمی)")
+      sub_loc = st.form_submit_button("افزودن محل استقرار")
+      if sub_loc and new_loc:
+        try:
+          conn = sqlite3.connect(DB_NAME)
+          cursor = conn.cursor()
+          cursor.execute("INSERT INTO locations (name) VALUES (?)", (new_loc,))
+          conn.commit()
+          conn.close()
+          log_audit(st.session_state["user"], f"افزودن محل استقرار {new_loc}")
+          st.success("محل استقرار افزوده شد.")
+          st.rerun()
+        except:
+          st.error("این محل استقرار از قبل وجود دارد.")
+
+    st.markdown("### لیست و ویرایش محل‌های موجود")
+    if locs_df.empty:
+      st.info("محیطی ثبت نشده است.")
+    else:
+      for idx, row in locs_df.iterrows():
+        col1, col2, col3 = st.columns([3, 1, 1])
+        updated_loc_name = col1.text_input(
+            "ویرایش نام", value=row["name"], key=f"loc_val_{row['id']}"
+        )
+        if col2.button("بروزرسانی", key=f"up_loc_{row['id']}"):
+          conn = sqlite3.connect(DB_NAME)
+          cursor = conn.cursor()
+          cursor.execute(
+              "UPDATE locations SET name = ? WHERE id = ?",
+              (updated_loc_name, row["id"]),
+          )
+          conn.commit()
+          conn.close()
+          log_audit(
+              st.session_state["user"],
+              f"ویرایش محل استقرار به {updated_loc_name}",
+          )
+          st.success("بروز شد.")
+          st.rerun()
+        if col3.button("حذف", key=f"del_loc_{row['id']}"):
+          conn = sqlite3.connect(DB_NAME)
+          cursor = conn.cursor()
+          cursor.execute("DELETE FROM locations WHERE id = ?", (row["id"],))
+          conn.commit()
+          conn.close()
+          log_audit(st.session_state["user"], f"حذف محل استقرار id:{row['id']}")
+          st.rerun()
+
+# --- بخش ۵: مدیریت کارشناسان (ادمین) ---
+elif menu == "👨‍🔬 مدیریت کارشناسان (ادمین)":
+  if role != "مدیر سیستم (ادمین)":
+    st.error("شما به این بخش دسترسی ندارید.")
+  else:
+    st.header("👨‍🔬 مدیریت کارشناسان مسئول (افزودن، ویرایش و حذف)")
     conn = sqlite3.connect(DB_NAME)
     experts_df = pd.read_sql("SELECT * FROM experts", conn)
     conn.close()
 
-    new_expert = st.text_input("نام کارشناس جدید")
-    if st.button("افزودن کارشناس"):
-      if new_expert:
+    with st.form("add_exp_form"):
+      new_expert = st.text_input("نام کارشناس جدید")
+      sub_exp = st.form_submit_button("افزودن کارشناس")
+      if sub_exp and new_expert:
         try:
           conn = sqlite3.connect(DB_NAME)
           cursor = conn.cursor()
-          cursor.execute(
-              "INSERT INTO experts (name) VALUES (?)", (new_expert,)
-          )
+          cursor.execute("INSERT INTO experts (name) VALUES (?)", (new_expert,))
           conn.commit()
           conn.close()
           log_audit(st.session_state["user"], f"افزودن کارشناس {new_expert}")
@@ -366,12 +490,30 @@ elif menu == "مدیریت کارشناسان (ادمین)":
         except:
           st.error("این کارشناس از قبل وجود دارد.")
 
-    st.subheader("لیست کارشناسان فعلی")
-    if not experts_df.empty:
-      for index, row in experts_df.iterrows():
-        col1, col2 = st.columns([4, 1])
-        col1.text(row["name"])
-        if col2.button("حذف", key=f"del_exp_{row['id']}"):
+    st.markdown("### لیست و ویرایش کارشناسان موجود")
+    if experts_df.empty:
+      st.info("کارشناسی ثبت نشده است.")
+    else:
+      for idx, row in experts_df.iterrows():
+        col1, col2, col3 = st.columns([3, 1, 1])
+        updated_exp_name = col1.text_input(
+            "ویرایش نام", value=row["name"], key=f"exp_val_{row['id']}"
+        )
+        if col2.button("بروزرسانی", key=f"up_exp_{row['id']}"):
+          conn = sqlite3.connect(DB_NAME)
+          cursor = conn.cursor()
+          cursor.execute(
+              "UPDATE experts SET name = ? WHERE id = ?",
+              (updated_exp_name, row["id"]),
+          )
+          conn.commit()
+          conn.close()
+          log_audit(
+              st.session_state["user"], f"ویرایش کارشناس به {updated_exp_name}"
+          )
+          st.success("بروز شد.")
+          st.rerun()
+        if col3.button("حذف", key=f"del_exp_{row['id']}"):
           conn = sqlite3.connect(DB_NAME)
           cursor = conn.cursor()
           cursor.execute("DELETE FROM experts WHERE id = ?", (row["id"],))
@@ -380,12 +522,13 @@ elif menu == "مدیریت کارشناسان (ادمین)":
           log_audit(st.session_state["user"], f"حذف کارشناس id:{row['id']}")
           st.rerun()
 
-# --- بخش ۵: مدیریت کاربران (ادمین) ---
-elif menu == "مدیریت کاربران (ادمین)":
+# --- بخش ۶: مدیریت کاربران (ادمین) ---
+elif menu == "👥 مدیریت کاربران (ادمین)":
   if role != "مدیر سیستم (ادمین)":
     st.error("شما دسترسی ندارید.")
   else:
-    st.header("👥 کنترل دسترسی و کاربران")
+    st.header("👥 کنترل دسترسی و کاربران سیستم")
+
     with st.form("add_user_form"):
       u_name = st.text_input("نام کاربری جدید")
       u_pass = st.text_input("رمز عبور", type="password")
@@ -397,31 +540,32 @@ elif menu == "مدیریت کاربران (ادمین)":
               "مشاهده‌کننده",
           ],
       )
-      sub_user = st.form_submit_button("ایجاد کاربر")
+      sub_user = st.form_submit_button("ایجاد کاربر جدید")
 
       if sub_user and u_name and u_pass:
         try:
           conn = sqlite3.connect(DB_NAME)
           cursor = conn.cursor()
           cursor.execute(
-              "INSERT INTO users VALUES (?, ?, ?)", (u_name, u_pass, u_role)
+              "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+              (u_name, u_pass, u_role),
           )
           conn.commit()
           conn.close()
           log_audit(st.session_state["user"], f"ایجاد کاربر جدید {u_name}")
-          st.success("کاربر ایجاد شد.")
+          st.success("کاربر با موفقیت ایجاد شد.")
           st.rerun()
-        except:
-          st.error("نام کاربری تکراری است.")
+        except sqlite3.IntegrityError:
+          st.error("خطا: این نام کاربری قبلاً ثبت شده است.")
 
-    st.subheader("لیست کاربران سیستم")
+    st.subheader("لیست کاربران فعلی سیستم")
     conn = sqlite3.connect(DB_NAME)
     users_df = pd.read_sql("SELECT username, role FROM users", conn)
     conn.close()
     st.dataframe(users_df, use_container_width=True)
 
-# --- بخش ۶: گزارشات و قابلیت پرینت بر اساس فیلتر ---
-elif menu == "گزارشات و قابلیت پرینت":
+# --- بخش ۷: گزارشات و قابلیت پرینت بر اساس فیلتر ---
+elif menu == "📊 گزارشات و قابلیت پرینت":
   if role not in ["مدیر سیستم (ادمین)", "کارشناس گزارش‌دهنده (ریپورت)"]:
     st.error("شما به این بخش دسترسی ندارید.")
   else:
@@ -435,7 +579,7 @@ elif menu == "گزارشات و قابلیت پرینت":
     if logs_df.empty:
       st.info("هیچ گزارشی برای فیلتر و پرینت وجود ندارد.")
     else:
-      st.subheader("🔍 فیلتر گزارش‌ها")
+      st.subheader("🔍 فیلتر پیشرفته گزارش‌ها")
       col1, col2, col3 = st.columns(3)
 
       device_filter_options = ["همه دستگاه‌ها"] + (
@@ -455,7 +599,6 @@ elif menu == "گزارشات و قابلیت پرینت":
           "فیلتر بر اساس خرابی", broken_filter_options
       )
 
-      # اعمال فیلترها روی DataFrame
       filtered_df = logs_df.copy()
       if selected_device_filter != "همه دستگاه‌ها":
         filtered_df = filtered_df[
@@ -477,13 +620,8 @@ elif menu == "گزارشات و قابلیت پرینت":
 
       st.markdown("---")
       st.subheader("🖨️ خروجی و آماده‌سازی برای پرینت")
-      st.info(
-          "برای پرینت گرفتن، می‌توانید روی دکمه زیر کلیک کنید تا صفحه مخصوص"
-          " چاپ باز شود، یا از قابلیت پرینت مرورگر خود (Ctrl+P) استفاده کنید."
-      )
 
-      if st.button("🖨️ ایجاد صفحه نسخه قابل چاپ"):
-        # ساخت یک نمای HTML ساده و تمیز برای پرینت
+      if st.button("🖨️ ایجاد فایل HTML نسخه قابل چاپ"):
         html_content = f"""
                 <html dir="rtl">
                 <head>
@@ -513,3 +651,5 @@ elif menu == "گزارشات و قابلیت پرینت":
             file_name="lab_report.html",
             mime="text/html",
         )
+
+```
