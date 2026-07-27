@@ -36,3 +36,4 @@ Built on modern, high-speed Python frameworks:
 2. Install the required Python dependencies by running the following command in your terminal:
    ```bash
    pip install streamlit pandas jdatetime
+streamlit run app.py --server.address=0.0.0.0 --server.port=8501
